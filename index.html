@@ -305,7 +305,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.0</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.1</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -1836,11 +1836,23 @@ function prepareNext() { // lädt den nächsten Satz schon vor, während der akt
 }
 function pumpPiper(session) {
   if (session !== tts.session || !tts.on || tts.paused) return;
-  const ahead = 3, id = piperId();
-  while (tts.next < tts.list.length && tts.next - Math.max(0, tts.curIdx) <= ahead) {
-    const idx = tts.next++, c = tts.list[idx];
-    const en = {idx, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
-    en.ready = PiperTTS.speak(id, chunkText(c)).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
+  const id = piperId();
+  while (tts.next < tts.list.length && tts.q.length < 3) {
+    // mehrere Sätze zu einem Stück: weniger Übergänge, weniger Pausen (das erste Stück ist kurz, damit es sofort losgeht)
+    const idx = tts.next++, first = tts.list[idx], maxN = (!tts.q.length && !tts.playing) ? 1 : 4;
+    let last = idx, txt = chunkText(first);
+    while (last - idx + 1 < maxN && last + 1 < tts.list.length) {
+      const nx = tts.list[last + 1];
+      if (nx.ch !== first.ch) break;
+      const t2 = chunkText(nx);
+      if (txt.length + t2.length > 520) break;
+      txt += ' ' + t2; last++;
+    }
+    tts.next = last + 1;
+    const c = last === idx ? first : Object.assign({}, first, {end: tts.list[last].end, text: txt, from: undefined});
+    if (last !== idx) delete c.from;
+    const en = {idx, last, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
+    en.ready = PiperTTS.speak(id, txt).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
       en.res = r;
       if (en.dead) { dropEntry(en); return r; }
       prepareNext();
@@ -1867,7 +1879,7 @@ async function playNextPiper(session) {
     if (session !== tts.session) return;
     tts.playing = false;
     setTimeout(() => dropEntry(en), 1500);
-    if (en.idx === tts.list.length - 1 && tts.ended && tts.next >= tts.list.length) { ttsFinished(); return; }
+    if (en.last === tts.list.length - 1 && tts.ended && tts.next >= tts.list.length) { ttsFinished(); return; }
     pumpPiper(session);
   };
   if (r.error) { // Notausgang: zurück zur Systemstimme
@@ -1880,7 +1892,7 @@ async function playNextPiper(session) {
     return;
   }
   if (r.empty || !r.url) { tts.curIdx = en.idx; done(); return; }
-  tts.curIdx = en.idx; tts.curEn = en;
+  tts.curIdx = en.idx; tts.curLast = en.last; tts.curEn = en;
   ensureChunks(session).then(() => pumpPiper(session));
   const el = SPK[en.seq % 2], prevEl = tts.lastEl && tts.lastEl !== el ? tts.lastEl : null;
   tts.lastEl = el;
@@ -1898,7 +1910,7 @@ async function playNextPiper(session) {
   tts.tick = setInterval(() => { // kurz vor dem Ende schon den nächsten Satz starten
     if (fin || session !== tts.session) { clearInterval(tts.tick); return; }
     const nx = tts.q[0];
-    if (nx && nx.res && nx.res.url && el.duration > 0 && !el.paused && (el.duration - el.currentTime) / (S.rate || 1) <= 0.3) done();
+    if (nx && nx.res && nx.res.url && el.duration > 0 && !el.paused && (el.duration - el.currentTime) / (S.rate || 1) <= 0.45) done();
   }, 25);
   pumpPiper(session);
 }
@@ -2139,7 +2151,8 @@ function ttsSkip(dir) {
   if (!tts.on) return;
   const session = ++tts.session;
   cancelSpeech();
-  const base = clamp(Math.max(0, tts.curIdx) + dir, 0, Math.max(0, tts.list.length - 1));
+  const from = dir > 0 ? Math.max(tts.curLast || 0, tts.curIdx, 0) : Math.max(0, tts.curIdx);
+  const base = clamp(from + dir, 0, Math.max(0, tts.list.length - 1));
   tts.paused = false; tts.next = base; tts.curIdx = base - 1;
   updateTtsButtons();
   ensureChunks(session).then(() => pumpTts(session));
