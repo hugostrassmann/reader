@@ -1,8 +1,10 @@
 /* Service Worker: App komplett offline verfügbar. Bei Änderungen die Versionsnummer erhöhen. */
-const VERSION = 'epub-reader-pwa-1.1.0';
+const VERSION = 'epub-reader-pwa-1.2.0';
+const RUNTIME = 'epub-reader-runtime-v1'; // grosse Sprachdateien, bleiben bei Updates erhalten
 const FILES = [
   './', './index.html', './jszip.min.js', './manifest.webmanifest',
-  './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'
+  './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',
+  './piper/piper-tts.js'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
@@ -10,7 +12,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== RUNTIME && k.indexOf('piper-voices') !== 0).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -31,7 +33,17 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
+  const big = /\/piper\/.+\.(wasm|data|js)$/.test(url.pathname) && !/piper-tts\.js$/.test(url.pathname);
   e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req).catch(() => Response.error()))
+    caches.match(req, { ignoreSearch: true }).then(hit => {
+      if (hit) return hit;
+      return fetch(req).then(res => {
+        if (big && res.ok && res.status === 200) {
+          const copy = res.clone();
+          caches.open(RUNTIME).then(c => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      }).catch(() => Response.error());
+    })
   );
 });

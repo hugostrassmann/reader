@@ -419,7 +419,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
   <p class="note">„Auto“ zeigt zwei Seiten, wenn der Bildschirm breit genug ist (zum Beispiel iPad quer).</p>
   <h3>Vorlesen: Stimme</h3>
   <select id="optVoice"></select>
-  <p class="note">Bessere Stimmen lädst du in den iOS-Einstellungen unter Bedienungshilfen → Gesprochene Inhalte → Stimmen herunter.</p>
+  <p class="note">Die „Eingebauten Stimmen“ laufen ohne Internet auf dem Gerät. Beim ersten Auswählen wird die Stimme einmal geladen (60 bis 110 MB, am besten im WLAN). Safari zeigt Web-Apps sonst nur die einfache Systemstimme.</p>
   <h3>Vorlesen: Tempo</h3>
   <div class="sz"><input type="range" id="optRate" min="0.6" max="1.8" step="0.05"><span class="val" id="rateVal"></span></div>
   <h3>Schlaf-Timer</h3>
@@ -498,6 +498,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="loading"><div class="spin"></div><div id="loadMsg">Buch wird geöffnet …</div></div>
 
 <script src="jszip.min.js"></script>
+<script src="piper/piper-tts.js"></script>
 <script>
 (() => {
 'use strict';
@@ -1711,11 +1712,11 @@ $('szUp').addEventListener('click', () => { S.size = clamp(S.size + 1, 14, 44); 
 $('optHyph').addEventListener('change', e => setSetting('hyph', e.target.checked));
 $('optPind').addEventListener('change', e => setSetting('pind', e.target.checked));
 $('optNoEmpty').addEventListener('change', e => setSetting('noempty', e.target.checked));
-$('optRate').addEventListener('input', e => { S.rate = +e.target.value; $('rateVal').textContent = S.rate.toFixed(2).replace('.', ',') + '×'; saveSettings(); updateRateLabel(); });
-$('optVoice').addEventListener('change', e => { S.voice = e.target.value; saveSettings(); });
-
+$('optRate').addEventListener('input', e => { S.rate = +e.target.value; $('rateVal').textContent = S.rate.toFixed(2).replace('.', ',') + '×'; saveSettings(); updateRateLabel(); if (typeof setSpkRate === 'function') setSpkRate(); });
 /* ========== Vorlesen ========== */
-const tts = {on:false, paused:false, session:0, list:[], next:0, curIdx:-1, chunksOf:new Map(), loading:false, ended:false, sleepT:0};
+const tts = {on:false, paused:false, session:0, list:[], next:0, curIdx:-1, chunksOf:new Map(), loading:false, ended:false, sleepT:0, q:[], playing:false};
+const PIPER_OK = !!(window.PiperTTS && PiperTTS.supported());
+const piperStored = {};
 const synth = window.speechSynthesis;
 let voices = [];
 function loadVoices() { voices = synth ? synth.getVoices() : []; buildVoiceList(); }
@@ -1732,16 +1733,156 @@ function pickVoice() {
   const good = c.find(v => /premium|enhanced|erweitert|verbessert/i.test(v.name));
   return good || c.find(v => v.default) || c[0] || null;
 }
+/* ---- Eingebaute Stimmen (Piper, laufen offline auf dem Gerät) ---- */
+const piperId =() => (S.voice && S.voice.indexOf('piper:') === 0) ? S.voice.slice(6) : '';
+const usePiper = () => PIPER_OK && !!piperId() && !!piperStored[piperId()];
+function refreshPiper() {
+  if (!PIPER_OK) return Promise.resolve();
+  return Promise.all(PiperTTS.voices.map(v => PiperTTS.stored(v.id).then(ok => { piperStored[v.id] = ok; }))).then(buildVoiceList);
+}
+const spk = new Audio();
+spk.preload = 'auto';
+spk.setAttribute('playsinline', '');
+try { spk.preservesPitch = true; spk.webkitPreservesPitch = true; } catch (e) {}
+let spkUrl = '', silenceUrl = '';
+function unlockAudio() { // muss direkt im Fingertipp passieren, sonst blockiert iOS das spätere Abspielen
+  try {
+    if (!silenceUrl) {
+      const n = 800, b = new ArrayBuffer(44 + n * 2), dv = new DataView(b);
+      const w = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+      w(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, 8000, true); dv.setUint32(28, 16000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 2, true);
+      silenceUrl = URL.createObjectURL(new Blob([b], {type:'audio/wav'}));
+    }
+    spk.src = silenceUrl;
+    const p = spk.play(); if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
+function setSpkRate() { try { spk.defaultPlaybackRate = S.rate; spk.playbackRate = S.rate; } catch (e) {} }
+function cancelSpeech() {
+  try { synth && synth.cancel(); } catch (e) {}
+  try { spk.onended = null; spk.onerror = null; spk.pause(); } catch (e) {}
+  (tts.q || []).forEach(en => en.ready.then(r => { if (r && r.url) URL.revokeObjectURL(r.url); }).catch(() => {}));
+  tts.q = []; tts.playing = false;
+  if (spkUrl) { URL.revokeObjectURL(spkUrl); spkUrl = ''; }
+}
+async function piperDownload(id) {
+  const v = PiperTTS.voices.find(x => x.id === id);
+  showLoading('Stimme „' + (v ? v.label : id) + '“ wird geladen …');
+  try {
+    await PiperTTS.download(id, (got, total) => { $('loadMsg').textContent = 'Stimme wird geladen … ' + (total ? Math.round(got * 100 / total) + ' %' : Math.round(got / 1048576) + ' MB'); });
+    $('loadMsg').textContent = 'Stimme wird vorbereitet …';
+    await PiperTTS.warm(id);
+    piperStored[id] = true;
+    hideLoading();
+    return true;
+  } catch (e) {
+    hideLoading();
+    try { await PiperTTS.remove(id); } catch (e2) {}
+    piperStored[id] = false;
+    toast('Die Stimme konnte nicht geladen werden. Bitte mit Internet (WLAN) noch einmal versuchen.', 5200);
+    return false;
+  }
+}
+async function piperPreview() {
+  try {
+    const r = await PiperTTS.speak(piperId(), 'Der Mond stand hoch über dem Haus.', 1);
+    if (!r) return;
+    if (spkUrl) URL.revokeObjectURL(spkUrl);
+    spkUrl = r.url; spk.src = r.url; setSpkRate();
+    const p = spk.play(); if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
+$('optVoice').addEventListener('change', async e => {
+  const v = e.target.value;
+  if (v.indexOf('piper:') === 0 && PIPER_OK) {
+    unlockAudio();
+    const id = v.slice(6);
+    if (!piperStored[id] && !(await piperDownload(id))) { e.target.value = S.voice || ''; return; }
+    S.voice = v; saveSettings(); buildVoiceList();
+    piperPreview();
+    return;
+  }
+  S.voice = v; saveSettings();
+});
+function setMediaSession() {
+  try {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({title:(book && book.title) || 'Vorlesen', artist:(book && book.author) || ''});
+    navigator.mediaSession.setActionHandler('play', () => ttsResume());
+    navigator.mediaSession.setActionHandler('pause', () => ttsPause());
+    navigator.mediaSession.setActionHandler('nexttrack', () => ttsSkip(1));
+    navigator.mediaSession.setActionHandler('previoustrack', () => ttsSkip(-1));
+  } catch (e) {}
+}
+function pumpPiper(session) {
+  if (session !== tts.session || !tts.on || tts.paused) return;
+  const ahead = 3, id = piperId();
+  while (tts.next < tts.list.length && tts.next - Math.max(0, tts.curIdx) <= ahead) {
+    const idx = tts.next++, c = tts.list[idx];
+    tts.q.push({idx, c, ready:PiperTTS.speak(id, chunkText(c), 1).then(r => r || {empty:true}).catch(err => ({error:err}))});
+  }
+  if (tts.next >= tts.list.length && !tts.ended) ensureChunks(session).then(() => pumpPiper(session));
+  playNextPiper(session);
+}
+async function playNextPiper(session) {
+  if (tts.playing || session !== tts.session || !tts.on || tts.paused) return;
+  const en = tts.q[0];
+  if (!en) return;
+  tts.playing = true;
+  const r = await en.ready;
+  if (session !== tts.session) return;
+  tts.q.shift();
+  const done = () => {
+    if (session !== tts.session) return;
+    tts.playing = false;
+    if (en.idx === tts.list.length - 1 && tts.ended && tts.next >= tts.list.length) { ttsFinished(); return; }
+    pumpPiper(session);
+  };
+  if (r.error) { // Notausgang: zurück zur Systemstimme
+    toast('Die eingebaute Stimme hat nicht funktioniert. Es wird die Systemstimme benutzt.', 5200);
+    S.voice = ''; saveSettings(); buildVoiceList();
+    tts.playing = false;
+    const s2 = ++tts.session; cancelSpeech();
+    tts.next = en.idx; tts.curIdx = en.idx - 1;
+    ensureChunks(s2).then(() => pumpTts(s2));
+    return;
+  }
+  if (r.empty || !r.url) { tts.curIdx = en.idx; done(); return; }
+  tts.curIdx = en.idx;
+  ttsFollow(en.c);
+  ensureChunks(session).then(() => pumpPiper(session));
+  if (spkUrl) URL.revokeObjectURL(spkUrl);
+  spkUrl = r.url;
+  spk.onended = () => done();
+  spk.onerror = () => done();
+  spk.src = r.url;
+  setSpkRate();
+  const p = spk.play();
+  if (p && p.catch) p.catch(() => { tts.playing = false; toast('Wiedergabe blockiert. Bitte noch einmal auf Vorlesen tippen.', 4200); });
+  pumpPiper(session);
+}
 function buildVoiceList() {
   const sel = $('optVoice');
   sel.innerHTML = '';
   const c = voiceCandidates();
-  if (!c.length) { const o = document.createElement('option'); o.textContent = synth ? 'Keine Stimme gefunden' : 'Vorlesen wird hier nicht unterstützt'; sel.appendChild(o); sel.disabled = true; return; }
+  if (!c.length && !PIPER_OK) { const o = document.createElement('option'); o.textContent = synth ? 'Keine Stimme gefunden' : 'Vorlesen wird hier nicht unterstützt'; sel.appendChild(o); sel.disabled = true; return; }
   sel.disabled = false;
-  const auto = document.createElement('option'); auto.value = ''; auto.textContent = 'Automatisch'; sel.appendChild(auto);
-  c.forEach(v => { const o = document.createElement('option'); o.value = v.voiceURI || v.name; o.textContent = v.name + ' (' + v.lang + ')'; sel.appendChild(o); });
+  const auto = document.createElement('option'); auto.value = ''; auto.textContent = 'Automatisch (Systemstimme)'; sel.appendChild(auto);
+  if (c.length) {
+    const g = document.createElement('optgroup'); g.label = 'Systemstimmen';
+    c.forEach(v => { const o = document.createElement('option'); o.value = v.voiceURI || v.name; o.textContent = v.name + ' (' + v.lang + ')'; g.appendChild(o); });
+    sel.appendChild(g);
+  }
+  if (PIPER_OK) {
+    const g = document.createElement('optgroup'); g.label = 'Eingebaute Stimmen (ohne Internet)';
+    PiperTTS.voices.forEach(v => { const o = document.createElement('option'); o.value = 'piper:' + v.id; o.textContent = v.label + (piperStored[v.id] ? '' : ' – laden'); g.appendChild(o); });
+    sel.appendChild(g);
+  }
   sel.value = S.voice || '';
+  if (sel.value !== (S.voice || '')) sel.value = '';
 }
+refreshPiper();
 const ttsActive = () => tts.on;
 function splitSentences(text) {
   const out = [];
@@ -1823,10 +1964,11 @@ async function ensureChunks(session) {
   tts.loading = false;
 }
 async function ttsStartFromPage() {
-  if (!synth) { toast('Vorlesen wird auf diesem Gerät nicht unterstützt.'); return; }
-  if (!voices.length) loadVoices();
+  if (!synth && !usePiper()) { toast('Vorlesen wird auf diesem Gerät nicht unterstützt.'); return; }
+  if (usePiper()) { unlockAudio(); setMediaSession(); PiperTTS.warm(piperId()).catch(() => {}); }
+  if (synth && !voices.length) loadVoices();
   const session = ++tts.session;
-  try { synth.cancel(); } catch (e) {}
+  cancelSpeech();
   tts.on = true; tts.paused = false; tts.ended = false; tts.loading = false;
   tts.list = []; tts.next = 0; tts.curIdx = -1;
   tts.lastLoaded = cur.i - 1;
@@ -1863,6 +2005,7 @@ function chunkText(c) {
 }
 function pumpTts(session) {
   if (session !== tts.session || !tts.on || tts.paused) return;
+  if (usePiper()) { pumpPiper(session); return; }
   const ahead = 5;
   while (tts.next < tts.list.length && tts.next - Math.max(0, tts.curIdx) <= ahead) {
     const idx = tts.next++;
@@ -1930,7 +2073,7 @@ function highlightChunk(c) {
 function clearHighlight() { lastHL = null; clearOverlay(); try { if (window.CSS && CSS.highlights) CSS.highlights.delete('tts'); } catch (e) {} }
 function ttsStop() {
   tts.session++; tts.on = false; tts.paused = false; tts.list = []; tts.next = 0; tts.curIdx = -1;
-  try { synth && synth.cancel(); } catch (e) {}
+  cancelSpeech();
   clearHighlight(); showTtsBar(false); releaseScreen(); clearTimeout(tts.sleepT);
   updateTtsButtons();
 }
@@ -1938,7 +2081,7 @@ function ttsPause() {
   if (!tts.on || tts.paused) return;
   tts.paused = true; tts.resumeIdx = Math.max(0, tts.curIdx);
   tts.session++;
-  try { synth.cancel(); } catch (e) {}
+  cancelSpeech();
   updateTtsButtons();
 }
 function ttsResume() {
@@ -1953,7 +2096,7 @@ function ttsResume() {
 function ttsSkip(dir) {
   if (!tts.on) return;
   const session = ++tts.session;
-  try { synth.cancel(); } catch (e) {}
+  cancelSpeech();
   const base = clamp(Math.max(0, tts.curIdx) + dir, 0, Math.max(0, tts.list.length - 1));
   tts.paused = false; tts.next = base; tts.curIdx = base - 1;
   updateTtsButtons();
@@ -1973,8 +2116,9 @@ function updateTtsButtons() {
 }
 function changeRate(d) {
   S.rate = clamp(Math.round((S.rate + d) * 20) / 20, 0.6, 1.8); saveSettings(); updateRateLabel();
+  if (usePiper()) { setSpkRate(); return; } // eingebaute Stimme: Tempo wirkt sofort
   if (tts.on && !tts.paused) { // Tempo wirkt ab dem nächsten Satz neu
-    const session = ++tts.session; try { synth.cancel(); } catch (e) {}
+    const session = ++tts.session; cancelSpeech();
     const base = Math.max(0, tts.curIdx); tts.next = base; tts.curIdx = base - 1;
     ensureChunks(session).then(() => pumpTts(session));
   }
