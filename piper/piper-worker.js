@@ -155,7 +155,7 @@ function wav(pcm, sr) {
   return new Blob([buf], {type: 'audio/wav'});
 }
 async function run(id, text) {
-  var m = await load(id);
+  var m = await load(id), t0 = Date.now();
   var sentences = await phonemize(text, (m.conf.espeak && m.conf.espeak.voice) || 'de');
   if (!sentences.length) return null;
   var sr = m.conf.audio.sample_rate, parts = [], total = 0;
@@ -170,7 +170,7 @@ async function run(id, text) {
   if (!total) return null;
   var all = new Float32Array(total), o = 0;
   for (var j = 0; j < parts.length; j++) { all.set(parts[j], o); o += parts[j].length; }
-  return {blob: wav(all, sr), seconds: total / sr};
+  return {blob: wav(all, sr), seconds: total / sr, ms: Date.now() - t0};
 }
 
 var chain = Promise.resolve();

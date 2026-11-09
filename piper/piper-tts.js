@@ -103,7 +103,7 @@
   /* Gibt {url, seconds} zurück (oder {empty:true}). Aufrufe laufen im Worker nacheinander. */
   function speak(id, text) {
     return call({type: 'speak', voice: id, text: text}).then(function (r) {
-      if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds};
+      if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds, ms: r.ms};
       return null;
     });
   }

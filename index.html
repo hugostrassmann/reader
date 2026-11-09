@@ -304,7 +304,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.4.0</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.4.1</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -1832,6 +1832,7 @@ function pumpPiper(session) {
     const en = {idx, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
     en.ready = PiperTTS.speak(id, chunkText(c)).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
       en.res = r;
+      if (r && r.ms && r.seconds && !en.dead) { tts.sy = (tts.sy || []).concat(r.ms / 1000 / r.seconds); if (tts.sy.length === 4) { const a = tts.sy.reduce((x, y) => x + y, 0) / 4; toast('Rechenzeit: ' + Math.round(a * 100) + ' % der Sprechzeit' + (a > 0.85 ? ' – zu langsam, bitte Kerstin oder Ramona wählen' : ''), 6000); } }
       if (en.dead) { dropEntry(en); return r; }
       prepareNext();
       return r;
@@ -1885,8 +1886,8 @@ async function playNextPiper(session) {
   tts.tick = setInterval(() => { // kurz vor dem Ende schon den nächsten Satz starten
     if (fin || session !== tts.session) { clearInterval(tts.tick); return; }
     const nx = tts.q[0];
-    if (nx && nx.res && nx.res.url && el.duration > 0 && !el.paused && (el.duration - el.currentTime) / (S.rate || 1) <= 0.06) done();
-  }, 30);
+    if (nx && nx.res && nx.res.url && el.duration > 0 && !el.paused && (el.duration - el.currentTime) / (S.rate || 1) <= 0.3) done();
+  }, 25);
   pumpPiper(session);
 }
 function buildVoiceList() {
