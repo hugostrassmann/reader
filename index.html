@@ -115,7 +115,7 @@ label.btn{display:inline-block;cursor:pointer;user-select:none;-webkit-user-sele
 .ib:active{background:var(--line)}
 .ib.on{color:var(--accent)}
 .ib b{font:600 17px ui-serif,Georgia,serif}
-#stage{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 16px);bottom:calc(var(--sa) + var(--bot,30px));
+#stage{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 12px);bottom:calc(var(--sa) + var(--bot,26px));
   padding:0 calc(env(safe-area-inset-right,0px) + var(--mx,26px)) 0 calc(env(safe-area-inset-left,0px) + var(--mx,26px));
   display:flex;align-items:center;justify-content:center;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #viewport{overflow:hidden;position:relative}
@@ -148,7 +148,7 @@ label.btn{display:inline-block;cursor:pointer;user-select:none;-webkit-user-sele
 .tts-hl{background:var(--hl)}
 
 #status{position:absolute;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;gap:10px;
-  padding:0 calc(env(safe-area-inset-right,0px) + 16px) var(--sa) calc(env(safe-area-inset-left,0px) + 16px);
+  padding:0 calc(env(safe-area-inset-right,0px) + var(--mx,26px)) var(--sa) calc(env(safe-area-inset-left,0px) + var(--mx,26px));
   height:calc(24px + var(--sa));
   font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;background:var(--bg)}
 #status .pg{flex:0 0 auto;white-space:nowrap}
@@ -270,7 +270,7 @@ body.scrollmode #reader{position:static;inset:auto;min-height:100vh;background:v
 body.scrollmode #topbar,body.scrollmode #status,body.scrollmode #progLine,body.scrollmode #ttsbar{position:fixed}
 body.scrollmode .scrim,body.scrollmode #toc,body.scrollmode #banner{position:fixed}
 body.scrollmode #stage{position:static;display:block;touch-action:auto;user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;
-  padding:calc(env(safe-area-inset-top,0px) + 22px) calc(env(safe-area-inset-right,0px) + var(--mx,26px)) calc(var(--sa) + var(--bot,30px) + 60px) calc(env(safe-area-inset-left,0px) + var(--mx,26px))}
+  padding:calc(env(safe-area-inset-top,0px) + 22px) calc(env(safe-area-inset-right,0px) + var(--mx,26px)) calc(var(--sa) + var(--bot,26px) + 60px) calc(env(safe-area-inset-left,0px) + var(--mx,26px))}
 body.scrollmode #viewport{overflow:visible}
 body.scrollmode #flow{max-width:44em;margin:0 auto;will-change:auto}
 body.scrollmode #flow .chapter{margin-bottom:2.4em}
@@ -306,7 +306,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.2</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.3</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -981,7 +981,8 @@ function applyTypography() {
   flow.classList.toggle('imgpage', !isScroll() && !!(cur.ch && cur.ch.len === 0));
   flow.lang = book ? book.lang : 'de';
   stage.style.setProperty('--mx', [14, 26, 46][S.margin] + 'px');
-  stage.style.setProperty('--bot', (ttsActive() ? 30 + 82 : 30) + 'px');
+  document.documentElement.style.setProperty('--mx', [14, 26, 46][S.margin] + 'px');
+  stage.style.setProperty('--bot', (ttsActive() ? 26 + 82 : 26) + 'px');
 }
 function layout() {
   if (!cur.ch) return;
