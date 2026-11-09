@@ -273,6 +273,13 @@ body.scrollmode #stage{position:static;display:block;touch-action:auto;user-sele
 body.scrollmode #viewport{overflow:visible}
 body.scrollmode #flow{max-width:44em;margin:0 auto;will-change:auto}
 body.scrollmode #flow .chapter{margin-bottom:2.4em}
+body.calm #status,body.calm #progLine{display:none!important}
+#speakHint{position:fixed;z-index:95;left:50%;top:calc(env(safe-area-inset-top,0px) + 22px);transform:translate(-50%,-14px);width:min(92vw,420px);padding:16px 18px;border-radius:16px;background:var(--ui);color:var(--fg);border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;visibility:hidden;transition:opacity .2s,transform .2s,visibility 0s .2s;text-align:left}
+#speakHint.show{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity .2s,transform .2s}
+#speakHint b{display:block;font-size:17px;margin-bottom:6px}
+#speakHint p{margin:0 0 12px;font-size:15px;line-height:1.45}
+#speakHint .row{display:flex;justify-content:flex-end}
+@media (max-width:430px){#topbar .ib{width:35px}}
 #prevCh{display:none}
 body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 
@@ -321,6 +328,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
     <button class="ib" id="bMode" aria-label="Tag- oder Nachtmodus"></button>
     <button class="ib" id="bMarkMode" aria-label="Text markieren" hidden><svg class="ic" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l4 4L9 20z"/><path d="M13 8l4 4"/></svg></button>
     <button class="ib" id="bMark" aria-label="Lesezeichen setzen"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg></button>
+    <button class="ib" id="bSpeak" aria-label="Mit iOS-Stimme vorlesen"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="14" height="16" rx="2"/><path d="M7 9h6M7 13h4"/><path d="M19.5 9.5a4 4 0 010 5"/><path d="M21.8 7.2a7.2 7.2 0 010 9.6"/></svg></button>
     <button class="ib" id="bTts" aria-label="Vorlesen"><svg class="ic" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 010 7"/><path d="M19 6a8.5 8.5 0 010 12"/></svg></button>
     <button class="ib" id="bFull" aria-label="Vollbild"></button>
     <button class="ib" id="bSet" aria-label="Darstellung"><b>Aa</b></button>
@@ -344,6 +352,12 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
     <span class="ch" id="stChap"></span>
     <button class="bk" id="stBook" aria-label="Fortschritt im Buch"></button>
   </footer>
+
+  <div id="speakHint" role="dialog" aria-label="Hinweis zum Vorlesen">
+    <b>Vorlesen mit deiner iOS-Stimme</b>
+    <p>Wische jetzt mit <b style="display:inline;font-size:inherit">zwei Fingern vom oberen Bildschirmrand nach unten</b>. Dann liest iOS das Kapitel vor. Mit dem Controller pausierst du oder änderst das Tempo.</p>
+    <div class="row"><button class="btn small primary" id="speakHintOk">Verstanden</button></div>
+  </div>
 
   <div class="scrim" id="scrim"></div>
 
@@ -1966,6 +1980,37 @@ function changeRate(d) {
   }
 }
 $('bTts').addEventListener('click', () => { if (tts.on) { ttsStop(); } else ttsStartFromPage(); });
+
+/* ========== Vorlesen mit iOS-Stimme („Bildschirm sprechen“) ========== */
+const speak = {on:false, prevView:'pages'};
+function showSpeakHint(on) { $('speakHint').classList.toggle('show', on); }
+$('speakHintOk').addEventListener('click', () => { lsSet('rd-speak-hint-seen', true); showSpeakHint(false); });
+async function speakEnter() {
+  if (!book || $('reader').hidden) return;
+  if (tts.on) ttsStop();
+  speak.prevView = S.view;
+  speak.on = true;
+  lsSet('rd-hint-scroll', true);
+  if (!isScroll()) await setView('scroll');
+  document.body.classList.add('calm');
+  $('bSpeak').classList.add('on');
+  setTop(false);
+  lockScreen();
+  if (!lsGet('rd-speak-hint-seen', false)) showSpeakHint(true);
+  else toast('Zwei Finger vom oberen Rand nach unten wischen', 4200);
+}
+async function speakExit(restoreView) {
+  if (!speak.on) return;
+  speak.on = false;
+  document.body.classList.remove('calm');
+  $('bSpeak').classList.remove('on');
+  showSpeakHint(false);
+  releaseScreen();
+  if (restoreView && speak.prevView === 'pages' && isScroll()) await setView('pages');
+}
+$('bSpeak').addEventListener('click', () => { if (speak.on) speakExit(true); else speakEnter(); });
+new MutationObserver(() => { if ($('reader').hidden && speak.on) speakExit(false); }).observe($('reader'), {attributes:true, attributeFilter:['hidden']});
+$('bTts').addEventListener('click', () => { if (speak.on) speakExit(false); }, true);
 $('tPlay').addEventListener('click', () => { if (tts.paused) ttsResume(); else ttsPause(); });
 $('tStop').addEventListener('click', ttsStop);
 $('tNext').addEventListener('click', () => ttsSkip(1));
