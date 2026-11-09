@@ -1,10 +1,10 @@
 /* Service Worker: App komplett offline verfügbar. Bei Änderungen die Versionsnummer erhöhen. */
-const VERSION = 'epub-reader-pwa-1.3.0';
+const VERSION = 'epub-reader-pwa-1.4.0';
 const RUNTIME = 'epub-reader-runtime-v1'; // grosse Sprachdateien, bleiben bei Updates erhalten
 const FILES = [
   './', './index.html', './jszip.min.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',
-  './piper/piper-tts.js'
+  './piper/piper-tts.js', './piper/piper-worker.js'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

@@ -304,7 +304,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.3.0</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.4.0</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -1740,11 +1740,10 @@ function refreshPiper() {
   if (!PIPER_OK) return Promise.resolve();
   return Promise.all(PiperTTS.voices.map(v => PiperTTS.stored(v.id).then(ok => { piperStored[v.id] = ok; }))).then(buildVoiceList);
 }
-const spk = new Audio();
-spk.preload = 'auto';
-spk.setAttribute('playsinline', '');
-try { spk.preservesPitch = true; spk.webkitPreservesPitch = true; } catch (e) {}
-let spkUrl = '', silenceUrl = '';
+const spk = new Audio(), spk2 = new Audio();
+const SPK = [spk, spk2]; // zwei Elemente im Wechsel: der nächste Satz ist schon geladen, wenn der aktuelle endet
+SPK.forEach(a => { a.preload = 'auto'; a.setAttribute('playsinline', ''); try { a.preservesPitch = true; a.webkitPreservesPitch = true; } catch (e) {} });
+let silenceUrl = '', spkSeq = 0, previewUrl = '';
 function unlockAudio() { // muss direkt im Fingertipp passieren, sonst blockiert iOS das spätere Abspielen
   try {
     if (!silenceUrl) {
@@ -1754,17 +1753,19 @@ function unlockAudio() { // muss direkt im Fingertipp passieren, sonst blockiert
       dv.setUint32(24, 8000, true); dv.setUint32(28, 16000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 2, true);
       silenceUrl = URL.createObjectURL(new Blob([b], {type:'audio/wav'}));
     }
-    spk.src = silenceUrl;
-    const p = spk.play(); if (p && p.catch) p.catch(() => {});
+    SPK.forEach(a => { a.src = silenceUrl; const p = a.play(); if (p && p.catch) p.catch(() => {}); });
   } catch (e) {}
 }
-function setSpkRate() { try { spk.defaultPlaybackRate = S.rate; spk.playbackRate = S.rate; } catch (e) {} }
+function setSpkRate() { SPK.forEach(a => { try { a.defaultPlaybackRate = S.rate; a.playbackRate = S.rate; } catch (e) {} }); }
+function dropEntry(en) { if (en && en.res && en.res.url) { URL.revokeObjectURL(en.res.url); en.res = null; } }
 function cancelSpeech() {
   try { synth && synth.cancel(); } catch (e) {}
-  try { spk.onended = null; spk.onerror = null; spk.pause(); } catch (e) {}
-  (tts.q || []).forEach(en => en.ready.then(r => { if (r && r.url) URL.revokeObjectURL(r.url); }).catch(() => {}));
+  clearInterval(tts.tick);
+  SPK.forEach(a => { try { a.onended = null; a.onerror = null; a.pause(); } catch (e) {} });
+  (tts.q || []).forEach(en => { en.dead = true; en.ready.then(() => dropEntry(en)); });
+  if (tts.curEn) { const c = tts.curEn; tts.curEn = null; setTimeout(() => dropEntry(c), 500); }
   tts.q = []; tts.playing = false;
-  if (spkUrl) { URL.revokeObjectURL(spkUrl); spkUrl = ''; }
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = ''; }
 }
 async function piperDownload(id) {
   const v = PiperTTS.voices.find(x => x.id === id);
@@ -1786,10 +1787,10 @@ async function piperDownload(id) {
 }
 async function piperPreview() {
   try {
-    const r = await PiperTTS.speak(piperId(), 'Der Mond stand hoch über dem Haus.', 1);
+    const r = await PiperTTS.speak(piperId(), 'Der Mond stand hoch über dem Haus.');
     if (!r) return;
-    if (spkUrl) URL.revokeObjectURL(spkUrl);
-    spkUrl = r.url; spk.src = r.url; setSpkRate();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = r.url; spk.src = r.url; setSpkRate();
     const p = spk.play(); if (p && p.catch) p.catch(() => {});
   } catch (e) {}
 }
@@ -1815,12 +1816,27 @@ function setMediaSession() {
     navigator.mediaSession.setActionHandler('previoustrack', () => ttsSkip(-1));
   } catch (e) {}
 }
+function prepareNext() { // lädt den nächsten Satz schon vor, während der aktuelle noch läuft
+  const nx = tts.q[0];
+  if (!nx || nx.prepared || !nx.res || !nx.res.url) return;
+  const el = SPK[nx.seq % 2];
+  if (tts.curEn && SPK[tts.curEn.seq % 2] === el) return;
+  nx.prepared = true; el.src = nx.res.url;
+  try { el.load(); } catch (e) {}
+}
 function pumpPiper(session) {
   if (session !== tts.session || !tts.on || tts.paused) return;
   const ahead = 3, id = piperId();
   while (tts.next < tts.list.length && tts.next - Math.max(0, tts.curIdx) <= ahead) {
     const idx = tts.next++, c = tts.list[idx];
-    tts.q.push({idx, c, ready:PiperTTS.speak(id, chunkText(c), 1).then(r => r || {empty:true}).catch(err => ({error:err}))});
+    const en = {idx, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
+    en.ready = PiperTTS.speak(id, chunkText(c)).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
+      en.res = r;
+      if (en.dead) { dropEntry(en); return r; }
+      prepareNext();
+      return r;
+    });
+    tts.q.push(en);
   }
   if (tts.next >= tts.list.length && !tts.ended) ensureChunks(session).then(() => pumpPiper(session));
   playNextPiper(session);
@@ -1833,9 +1849,14 @@ async function playNextPiper(session) {
   const r = await en.ready;
   if (session !== tts.session) return;
   tts.q.shift();
+  let fin = false;
   const done = () => {
+    if (fin) return;
+    fin = true;
+    clearInterval(tts.tick);
     if (session !== tts.session) return;
     tts.playing = false;
+    setTimeout(() => dropEntry(en), 1500);
     if (en.idx === tts.list.length - 1 && tts.ended && tts.next >= tts.list.length) { ttsFinished(); return; }
     pumpPiper(session);
   };
@@ -1849,17 +1870,23 @@ async function playNextPiper(session) {
     return;
   }
   if (r.empty || !r.url) { tts.curIdx = en.idx; done(); return; }
-  tts.curIdx = en.idx;
-  ttsFollow(en.c);
+  tts.curIdx = en.idx; tts.curEn = en;
+  ttsFollow(en.c); // Farbe zeitgleich mit dem Ton
   ensureChunks(session).then(() => pumpPiper(session));
-  if (spkUrl) URL.revokeObjectURL(spkUrl);
-  spkUrl = r.url;
-  spk.onended = () => done();
-  spk.onerror = () => done();
-  spk.src = r.url;
+  const el = SPK[en.seq % 2];
+  if (!en.prepared) el.src = r.url;
+  el.onended = () => done();
+  el.onerror = () => done();
   setSpkRate();
-  const p = spk.play();
+  const p = el.play();
   if (p && p.catch) p.catch(() => { tts.playing = false; toast('Wiedergabe blockiert. Bitte noch einmal auf Vorlesen tippen.', 4200); });
+  prepareNext();
+  clearInterval(tts.tick);
+  tts.tick = setInterval(() => { // kurz vor dem Ende schon den nächsten Satz starten
+    if (fin || session !== tts.session) { clearInterval(tts.tick); return; }
+    const nx = tts.q[0];
+    if (nx && nx.res && nx.res.url && el.duration > 0 && !el.paused && (el.duration - el.currentTime) / (S.rate || 1) <= 0.06) done();
+  }, 30);
   pumpPiper(session);
 }
 function buildVoiceList() {
