@@ -14,7 +14,7 @@
 <meta name="theme-color" content="#fbfbfa" id="themeColor">
 <title>EPUB-Reader</title>
 <style>
-:root{
+:root{--sa:max(0px,calc(env(safe-area-inset-bottom,0px) - 18px));
   --bg:#fbfbfa; --fg:#1b1b1a; --muted:#6b6b68; --ui:#ffffff; --line:#dcdcd8;
   --accent:#2f5fa7; --accent-ink:#ffffff; --hl:rgba(255,190,0,.38); --shadow:0 10px 34px rgba(0,0,0,.2);
   --warn:#b3261e;
@@ -115,7 +115,7 @@ label.btn{display:inline-block;cursor:pointer;user-select:none;-webkit-user-sele
 .ib:active{background:var(--line)}
 .ib.on{color:var(--accent)}
 .ib b{font:600 17px ui-serif,Georgia,serif}
-#stage{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + var(--bot,41px));
+#stage{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 16px);bottom:calc(var(--sa) + var(--bot,30px));
   padding:0 calc(env(safe-area-inset-right,0px) + var(--mx,26px)) 0 calc(env(safe-area-inset-left,0px) + var(--mx,26px));
   display:flex;align-items:center;justify-content:center;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #viewport{overflow:hidden;position:relative}
@@ -148,16 +148,16 @@ label.btn{display:inline-block;cursor:pointer;user-select:none;-webkit-user-sele
 .tts-hl{background:var(--hl)}
 
 #status{position:absolute;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;gap:10px;
-  padding:0 calc(env(safe-area-inset-right,0px) + 16px) env(safe-area-inset-bottom,0px) calc(env(safe-area-inset-left,0px) + 16px);
-  height:calc(35px + env(safe-area-inset-bottom,0px));
-  font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;background:var(--bg)}
+  padding:0 calc(env(safe-area-inset-right,0px) + 16px) var(--sa) calc(env(safe-area-inset-left,0px) + 16px);
+  height:calc(24px + var(--sa));
+  font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;background:var(--bg)}
 #status .pg{flex:0 0 auto;white-space:nowrap}
 #status .ch{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#status .bk{flex:0 0 auto;border:0;background:transparent;color:var(--muted);padding:8px 2px;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#progLine{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 35px);height:2px;background:var(--line);z-index:21}
+#status .bk{flex:0 0 auto;border:0;background:transparent;color:var(--muted);padding:3px 2px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#progLine{position:absolute;left:0;right:0;bottom:calc(var(--sa) + 24px);height:2px;background:var(--line);z-index:21}
 #progFill{display:block;height:100%;width:0;background:var(--accent)}
 
-#ttsbar{position:absolute;left:0;right:0;z-index:22;bottom:calc(env(safe-area-inset-bottom,0px) + 37px);display:none;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;
+#ttsbar{position:absolute;left:0;right:0;z-index:22;bottom:calc(var(--sa) + 26px);display:none;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;
   padding:3px 8px;background:var(--ui);border-top:1px solid var(--line)}
 #ttsbar.show{display:flex}
 #ttsbar .rate{font-size:13px;color:var(--muted);min-width:46px;text-align:center}
@@ -270,11 +270,12 @@ body.scrollmode #reader{position:static;inset:auto;min-height:100vh;background:v
 body.scrollmode #topbar,body.scrollmode #status,body.scrollmode #progLine,body.scrollmode #ttsbar{position:fixed}
 body.scrollmode .scrim,body.scrollmode #toc,body.scrollmode #banner{position:fixed}
 body.scrollmode #stage{position:static;display:block;touch-action:auto;user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;
-  padding:calc(env(safe-area-inset-top,0px) + 22px) calc(env(safe-area-inset-right,0px) + var(--mx,26px)) calc(env(safe-area-inset-bottom,0px) + var(--bot,41px) + 60px) calc(env(safe-area-inset-left,0px) + var(--mx,26px))}
+  padding:calc(env(safe-area-inset-top,0px) + 22px) calc(env(safe-area-inset-right,0px) + var(--mx,26px)) calc(var(--sa) + var(--bot,30px) + 60px) calc(env(safe-area-inset-left,0px) + var(--mx,26px))}
 body.scrollmode #viewport{overflow:visible}
 body.scrollmode #flow{max-width:44em;margin:0 auto;will-change:auto}
 body.scrollmode #flow .chapter{margin-bottom:2.4em}
 body.calm #status,body.calm #progLine{display:none!important}
+body.noprog #progLine{display:none!important}
 #speakHint{position:fixed;z-index:95;left:50%;top:calc(env(safe-area-inset-top,0px) + 22px);transform:translate(-50%,-14px);width:min(92vw,420px);padding:16px 18px;border-radius:16px;background:var(--ui);color:var(--fg);border:1px solid var(--line);box-shadow:var(--shadow);opacity:0;visibility:hidden;transition:opacity .2s,transform .2s,visibility 0s .2s;text-align:left}
 #speakHint.show{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity .2s,transform .2s}
 #speakHint b{display:block;font-size:17px;margin-bottom:6px}
@@ -305,7 +306,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.1</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.2</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -411,6 +412,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
   <div class="row" id="optLh"></div>
   <h3>Absätze</h3>
   <div class="row" id="optPgap"></div>
+  <label class="sw"><input type="checkbox" id="optProg"> Fortschrittsbalken unten anzeigen</label>
   <label class="sw"><input type="checkbox" id="optPind"> Erste Zeile eines Absatzes einrücken</label>
   <label class="sw"><input type="checkbox" id="optNoEmpty"> Leere Zeilen aus dem Buch ausblenden</label>
   <p class="note">Hilft bei Büchern, in denen jede Zeile als eigener Absatz gespeichert ist und deshalb Lücken entstehen.</p>
@@ -543,7 +545,7 @@ const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
 const DEV = deviceName().replace(/[^A-Za-z0-9_-]/g, '_');
 
 /* ========== Einstellungen ========== */
-const DEFAULTS = {hlColor:'#ffd400', libSort:'read', libDir:'desc', libView:'grid', pgap:2, pind:false, noempty:false, view:'pages', size:20, font:'serif', lh:1.55, margin:1, mode:'auto', bgDay:'#fbfbfa', bgNight:'#1c1c1e', align:'just', hyph:true, pages:'auto', rate:1, voice:'', sleep:0, stat:0};
+const DEFAULTS = {hlColor:'#ffd400', libSort:'read', libDir:'desc', libView:'grid', pgap:2, pind:false, noempty:false, view:'pages', size:20, font:'serif', lh:1.55, margin:1, mode:'auto', bgDay:'#fbfbfa', bgNight:'#1c1c1e', align:'just', hyph:true, pages:'auto', rate:1, voice:'', sleep:0, stat:0, prog:true};
 function normalizeSettings(o) {
   const r = Object.assign({}, DEFAULTS, o || {});
   if (r.theme) { // alte Themen übernehmen
@@ -975,10 +977,11 @@ function applyTypography() {
   flow.style.setProperty('--pgap', ['0', '.3em', '.7em'][S.pgap] || '.7em');
   flow.style.setProperty('--pind', S.pind ? '1.4em' : '0');
   flow.classList.toggle('noempty', !!S.noempty);
+  document.body.classList.toggle('noprog', S.prog === false);
   flow.classList.toggle('imgpage', !isScroll() && !!(cur.ch && cur.ch.len === 0));
   flow.lang = book ? book.lang : 'de';
   stage.style.setProperty('--mx', [14, 26, 46][S.margin] + 'px');
-  stage.style.setProperty('--bot', (ttsActive() ? 41 + 46 : 41) + 'px');
+  stage.style.setProperty('--bot', (ttsActive() ? 30 + 82 : 30) + 'px');
 }
 function layout() {
   if (!cur.ch) return;
@@ -1694,6 +1697,7 @@ function buildSettings() {
   chips($('optLh'), [{v:1.35, t:'Eng'}, {v:1.55, t:'Normal'}, {v:1.8, t:'Weit'}], S.lh, v => setSetting('lh', v));
   chips($('optPgap'), [{v:0, t:'Keiner'}, {v:1, t:'Klein'}, {v:2, t:'Normal'}], S.pgap, v => setSetting('pgap', v));
   $('optPind').checked = !!S.pind;
+  $('optProg').checked = S.prog !== false;
   $('optNoEmpty').checked = !!S.noempty;
   chips($('optMargin'), [{v:0, t:'Schmal'}, {v:1, t:'Mittel'}, {v:2, t:'Breit'}], S.margin, v => setSetting('margin', v));
   chips($('optPages'), [{v:'auto', t:'Auto'}, {v:'1', t:'Eine'}, {v:'2', t:'Zwei'}], S.pages, v => setSetting('pages', v));
@@ -1712,6 +1716,7 @@ const reflowDebounced = debounce(() => { if (!$('reader').hidden) relayout(); },
 $('szDown').addEventListener('click', () => { S.size = clamp(S.size - 1, 14, 44); $('szRange').value = S.size; $('szVal').textContent = S.size + ' px'; saveSettings(); updatePreview(); reflowDebounced(); });
 $('szUp').addEventListener('click', () => { S.size = clamp(S.size + 1, 14, 44); $('szRange').value = S.size; $('szVal').textContent = S.size + ' px'; saveSettings(); updatePreview(); reflowDebounced(); });
 $('optHyph').addEventListener('change', e => setSetting('hyph', e.target.checked));
+$('optProg').addEventListener('change', e => setSetting('prog', e.target.checked));
 $('optPind').addEventListener('change', e => setSetting('pind', e.target.checked));
 $('optNoEmpty').addEventListener('change', e => setSetting('noempty', e.target.checked));
 $('optRate').addEventListener('input', e => { S.rate = +e.target.value; $('rateVal').textContent = S.rate.toFixed(2).replace('.', ',') + '×'; saveSettings(); updateRateLabel(); if (typeof setSpkRate === 'function') setSpkRate(); });
