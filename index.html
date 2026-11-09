@@ -162,6 +162,7 @@ label.btn{display:inline-block;cursor:pointer;user-select:none;-webkit-user-sele
 #ttsbar.show{display:flex}
 #ttsbar .rate{font-size:13px;color:var(--muted);min-width:46px;text-align:center}
 #ttsbar .ib{width:44px;height:36px}
+#tVoice{flex:1 0 100%;max-width:320px;height:32px;font-size:14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:0 8px}
 #ttsbar .ib svg.ic{width:20px;height:20px}
 @media (max-width:420px){#topbar .ib{width:38px}}
 /* Suche */
@@ -304,7 +305,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.4.2</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.0</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -344,6 +345,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
     <span class="rate" id="tRate">1,0×</span>
     <button class="ib" id="tFast" aria-label="Schneller"><b>+</b></button>
     <button class="ib" id="tStop" aria-label="Vorlesen beenden"><svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <select id="tVoice" aria-label="Stimme"></select>
   </div>
 
   <div id="progLine"><i id="progFill"></i></div>
@@ -1794,17 +1796,25 @@ async function piperPreview() {
     const p = spk.play(); if (p && p.catch) p.catch(() => {});
   } catch (e) {}
 }
-$('optVoice').addEventListener('change', async e => {
-  const v = e.target.value;
+async function voiceChosen(v) { // gibt true zurück, wenn die Stimme gewechselt wurde
   if (v.indexOf('piper:') === 0 && PIPER_OK) {
     unlockAudio();
     const id = v.slice(6);
-    if (!piperStored[id] && !(await piperDownload(id))) { e.target.value = S.voice || ''; return; }
+    if (!piperStored[id] && !(await piperDownload(id))) { buildVoiceList(); return false; }
     S.voice = v; saveSettings(); buildVoiceList();
-    piperPreview();
-    return;
+    if (!tts.on) piperPreview();
+    return true;
   }
-  S.voice = v; saveSettings();
+  S.voice = v; saveSettings(); buildVoiceList();
+  return true;
+}
+$('optVoice').addEventListener('change', e => { voiceChosen(e.target.value); });
+$('tVoice').addEventListener('change', async e => {
+  const ok = await voiceChosen(e.target.value);
+  if (!ok || !tts.on || tts.paused) return;
+  const i = Math.max(0, tts.curIdx), s2 = ++tts.session; // mit neuer Stimme ab dem aktuellen Satz weiter
+  cancelSpeech(); tts.next = i; tts.curIdx = i - 1;
+  ensureChunks(s2).then(() => pumpTts(s2));
 });
 function setMediaSession() {
   try {
@@ -1832,7 +1842,6 @@ function pumpPiper(session) {
     const en = {idx, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
     en.ready = PiperTTS.speak(id, chunkText(c)).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
       en.res = r;
-      if (r && r.ms && r.seconds && !en.dead) { tts.sy = (tts.sy || []).concat(r.ms / 1000 / r.seconds); if (tts.sy.length === 4) { const a = tts.sy.reduce((x, y) => x + y, 0) / 4; toast('Rechenzeit: ' + Math.round(a * 100) + ' % der Sprechzeit' + (a > 0.85 ? ' – zu langsam, bitte Kerstin oder Ramona wählen' : ''), 6000); } }
       if (en.dead) { dropEntry(en); return r; }
       prepareNext();
       return r;
@@ -1872,9 +1881,12 @@ async function playNextPiper(session) {
   }
   if (r.empty || !r.url) { tts.curIdx = en.idx; done(); return; }
   tts.curIdx = en.idx; tts.curEn = en;
-  ttsFollow(en.c); // Farbe zeitgleich mit dem Ton
   ensureChunks(session).then(() => pumpPiper(session));
-  const el = SPK[en.seq % 2];
+  const el = SPK[en.seq % 2], prevEl = tts.lastEl && tts.lastEl !== el ? tts.lastEl : null;
+  tts.lastEl = el;
+  let lag = 0; // Farbe erst wechseln, wenn der vorige Satz wirklich verklungen ist
+  if (prevEl && !prevEl.paused && prevEl.duration > 0) lag = Math.max(0, (prevEl.duration - prevEl.currentTime) / (S.rate || 1) - 0.05);
+  setTimeout(() => { if (session === tts.session && tts.curEn === en) ttsFollow(en.c); }, lag * 1000);
   if (!en.prepared) el.src = r.url;
   el.onended = () => done();
   el.onerror = () => done();
@@ -1909,7 +1921,9 @@ function buildVoiceList() {
   }
   sel.value = S.voice || '';
   if (sel.value !== (S.voice || '')) sel.value = '';
+  syncBarVoice();
 }
+function syncBarVoice() { const tv = $('tVoice'), sel = $('optVoice'); if (!tv) return; tv.innerHTML = sel.innerHTML; tv.value = sel.value; tv.disabled = sel.disabled; }
 refreshPiper();
 const ttsActive = () => tts.on;
 function splitSentences(text) {
