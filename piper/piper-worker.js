@@ -87,16 +87,18 @@ async function phonemize(text, lang) {
 }
 
 var loaded = {};
+function stage(name, p) { return Promise.resolve(p).catch(function (e) { throw new Error(name + ': ' + String((e && e.message) || e)); }); }
 function load(id) {
   if (loaded[id]) return loaded[id];
   loaded[id] = (async function () {
-    var c = await caches.open(CACHE);
+    var c = await stage('Speicher öffnen', caches.open(CACHE));
     var rj = await c.match(KEY + id + '.json'), ro = await c.match(KEY + id + '.onnx');
-    if (!rj || !ro) throw new Error('Stimme ist nicht geladen');
-    var conf = await rj.json();
-    var results = await Promise.all([ortLoad(), ro.arrayBuffer(), phonLoad()]);
-    var ort = results[0];
-    var session = await ort.InferenceSession.create(new Uint8Array(results[1]), {executionProviders: ['wasm'], graphOptimizationLevel: 'all'});
+    if (!rj || !ro) throw new Error('Stimme ist nicht gespeichert');
+    var conf = await stage('Einstellungen lesen', rj.json());
+    var ort = await stage('Rechenprogramm laden', ortLoad());
+    var buf = await stage('Modell lesen', ro.arrayBuffer());
+    await stage('Sprachdaten laden', phonLoad());
+    var session = await stage('Modell starten (' + Math.round(buf.byteLength / 1048576) + ' MB)', ort.InferenceSession.create(new Uint8Array(buf), {executionProviders: ['wasm'], graphOptimizationLevel: 'all'}));
     return {ort: ort, session: session, conf: conf};
   })();
   loaded[id].catch(function () { delete loaded[id]; });

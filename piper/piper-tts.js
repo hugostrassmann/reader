@@ -38,7 +38,7 @@
   }
   async function fetchProgress(url, onProg) {
     var r = await fetch(url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) throw new Error('Server antwortet mit ' + r.status);
     var total = +r.headers.get('Content-Length') || 0, got = 0, parts = [];
     if (!r.body || !r.body.getReader) { var b = await r.blob(); onProg && onProg(b.size, b.size); return b; }
     var rd = r.body.getReader();
@@ -63,9 +63,9 @@
         await c.put(KEY + id + '.json', new Response(js, {headers: {'Content-Type': 'application/json'}}));
         await c.put(KEY + id + '.onnx', new Response(onnx, {headers: {'Content-Type': 'application/octet-stream'}}));
         return true;
-      } catch (e) { lastErr = e; }
+      } catch (e) { lastErr = new Error('Laden: ' + String((e && e.message) || e)); }
     }
-    throw lastErr || new Error('Download fehlgeschlagen');
+    throw lastErr || new Error('Laden: fehlgeschlagen');
   }
 
   /* ---------- Worker ---------- */

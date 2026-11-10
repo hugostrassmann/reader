@@ -300,7 +300,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.5</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.6</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -1786,15 +1786,19 @@ async function piperDownload(id) {
   try {
     await PiperTTS.download(id, (got, total) => { $('loadMsg').textContent = 'Stimme wird geladen … ' + (total ? Math.round(got * 100 / total) + ' %' : Math.round(got / 1048576) + ' MB'); });
     $('loadMsg').textContent = 'Stimme wird vorbereitet …';
+    lsSet('rd-piper-stage', 'Start der Stimme ' + id);
     await PiperTTS.warm(id);
+    lsSet('rd-piper-stage', '');
     piperStored[id] = true;
     hideLoading();
     return true;
   } catch (e) {
+    lsSet('rd-piper-stage', '');
     hideLoading();
     try { await PiperTTS.remove(id); } catch (e2) {}
     piperStored[id] = false;
-    toast('Die Stimme konnte nicht geladen werden. Bitte mit Internet (WLAN) noch einmal versuchen.', 5200);
+    const why = String((e && e.message) || e).slice(0, 140);
+    toast('Stimme nicht geladen. Schritt „' + why + '“', 9000);
     return false;
   }
 }
@@ -1865,6 +1869,7 @@ function pumpPiper(session) {
     const en = {idx, last, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
     en.ready = PiperTTS.speak(id, txt).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
       en.res = r;
+      if (r && r.ms && r.seconds && !en.dead) { tts.sy = (tts.sy || []).concat(r.ms / 1000 / r.seconds); if (tts.sy.length === 4) { const a = tts.sy.reduce((x, y) => x + y, 0) / 4; if (a > 0.85) toast('Diese Stimme rechnet zu langsam (' + Math.round(a * 100) + ' % der Sprechzeit). Bitte „Thorsten (natürlich)“ wählen.', 9000); } }
       if (en.dead) { dropEntry(en); return r; }
       prepareNext();
       return r;
@@ -1948,6 +1953,7 @@ function buildVoiceList() {
 }
 function syncBarVoice() { const tv = $('tVoice'), sel = $('optVoice'); if (!tv) return; tv.innerHTML = sel.innerHTML; tv.value = sel.value; tv.disabled = sel.disabled; }
 refreshPiper();
+{ const lastStage = lsGet('rd-piper-stage', ''); if (lastStage) { lsSet('rd-piper-stage', ''); setTimeout(() => toast('Die Seite wurde beim „' + lastStage + '“ von iOS beendet (zu wenig Arbeitsspeicher). Bitte eine kleinere Stimme wählen.', 10000), 1200); } }
 const ttsActive = () => tts.on;
 function splitSentences(text) {
   const out = [];
@@ -2030,7 +2036,7 @@ async function ensureChunks(session) {
 }
 async function ttsStartFromPage() {
   if (!synth && !usePiper()) { toast('Vorlesen wird auf diesem Gerät nicht unterstützt.'); return; }
-  if (usePiper()) { unlockAudio(); setMediaSession(); PiperTTS.warm(piperId()).catch(() => {}); }
+  if (usePiper()) { unlockAudio(); setMediaSession(); lsSet('rd-piper-stage', 'Start der Stimme ' + piperId()); PiperTTS.warm(piperId()).then(() => lsSet('rd-piper-stage', '')).catch(e => { lsSet('rd-piper-stage', ''); toast('Stimme startet nicht. Schritt „' + String((e && e.message) || e).slice(0, 140) + '“', 9000); }); }
   if (synth && !voices.length) loadVoices();
   const session = ++tts.session;
   cancelSpeech();
