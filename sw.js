@@ -1,5 +1,5 @@
 /* Service Worker: App komplett offline verfügbar. Bei Änderungen die Versionsnummer erhöhen. */
-const VERSION = 'epub-reader-pwa-1.7.1';
+const VERSION = 'epub-reader-pwa-1.7.2';
 const RUNTIME = 'epub-reader-runtime-v1'; // grosse Sprachdateien, bleiben bei Updates erhalten
 const FILES = [
   './', './index.html', './jszip.min.js', './manifest.webmanifest',
@@ -22,6 +22,7 @@ self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== RUNTIME && k.indexOf('piper-voices') !== 0).map(k => caches.delete(k))))
+      .then(() => caches.open(RUNTIME).then(c => c.keys().then(ks => Promise.all(ks.filter(r => !/\/piper\/.+\.(wasm|data)$/.test(r.url) && !/\/piper\/(ort\.wasm\.min|piper_phonemize)\.js$/.test(r.url)).map(r => c.delete(r)))))).catch(() => {})
       .then(() => self.clients.claim())
   );
 });
@@ -42,7 +43,7 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-  const big = /\/piper\/.+\.(wasm|data|js)$/.test(url.pathname) && !/piper-tts\.js$/.test(url.pathname);
+  const big = /\/piper\/.+\.(wasm|data)$/.test(url.pathname) || /\/piper\/(ort\.wasm\.min|piper_phonemize)\.js$/.test(url.pathname);
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then(hit => {
       if (hit) return iso(hit);

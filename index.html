@@ -301,7 +301,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.7.1</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.7.2</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -1945,7 +1945,11 @@ async function playNextPiper(session) {
     if (ct !== en.lastCt) { en.lastCt = ct; en.lastAt = nowMs; }
     const tEst = ct + (el.paused ? 0 : Math.min(0.3, (nowMs - (en.lastAt || nowMs)) / 1000 * (S.rate || 1))) + (S.lead == null ? 0.2 : S.lead); // glatte Zeit plus Vorlauf
     if (tts.curEn === en && !el.paused && ct > 0 && tEst >= lag) { // Farbe genau auf den gesprochenen Satz
-      const st = (r.starts && r.starts.length === en.cs.length) ? r.starts : [0];
+      let st = (r.starts && r.starts.length === en.cs.length) ? r.starts : null;
+      if (!st) { // Notlösung: Satzanfänge nach Textlänge schätzen
+        const lens = en.cs.map(x => (x.text || '').length || 1), tot = lens.reduce((x, y) => x + y, 0); let acc = 0;
+        st = lens.map(n => { const v = acc / tot * (r.seconds || el.duration || 0); acc += n; return v; });
+      }
       let k = 0;
       for (let q = 0; q < st.length; q++) if (st[q] <= tEst) k = q;
       if (k !== en.hk) { en.hk = k; ttsFollow(en.cs[k] || en.c); }
