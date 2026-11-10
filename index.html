@@ -300,7 +300,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.6.0</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.6.1</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -412,6 +412,9 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
   <h3>Vorlesen: Stimme</h3>
   <select id="optVoice"></select>
   <p class="note">Die „Eingebauten Stimmen“ laufen ohne Internet auf dem Gerät. Beim ersten Auswählen wird die Stimme einmal geladen (60 bis 110 MB, am besten im WLAN). Safari zeigt Web-Apps sonst nur die einfache Systemstimme.</p>
+  <h3>Vorlesen: Klang</h3>
+  <select id="optTone"><option value="0">Normal</option><option value="1">Heller</option><option value="2">Viel heller</option></select>
+  <p class="note">Macht dumpfe Stimmen klarer. Gilt für die eingebauten Stimmen, ab dem nächsten Satz.</p>
   <h3>Vorlesen: Tempo</h3>
   <div class="sz"><input type="range" id="optRate" min="0.6" max="1.8" step="0.05"><span class="val" id="rateVal"></span></div>
   <h3>Schlaf-Timer</h3>
@@ -533,7 +536,7 @@ const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
 const DEV = deviceName().replace(/[^A-Za-z0-9_-]/g, '_');
 
 /* ========== Einstellungen ========== */
-const DEFAULTS = {hlColor:'#ffd400', libSort:'read', libDir:'desc', libView:'grid', pgap:2, pind:false, noempty:false, view:'pages', size:20, font:'serif', lh:1.55, margin:1, mode:'auto', bgDay:'#fbfbfa', bgNight:'#1c1c1e', align:'just', hyph:true, pages:'auto', rate:1, voice:'', sleep:0, stat:0, prog:true};
+const DEFAULTS = {hlColor:'#ffd400', libSort:'read', libDir:'desc', libView:'grid', pgap:2, pind:false, noempty:false, view:'pages', size:20, font:'serif', lh:1.55, margin:1, mode:'auto', bgDay:'#fbfbfa', bgNight:'#1c1c1e', align:'just', hyph:true, pages:'auto', rate:1, tone:0, voice:'', sleep:0, stat:0, prog:true};
 function normalizeSettings(o) {
   const r = Object.assign({}, DEFAULTS, o || {});
   if (r.theme) { // alte Themen übernehmen
@@ -1707,6 +1710,7 @@ function buildSettings() {
   $('optNoEmpty').checked = !!S.noempty;
   chips($('optMargin'), [{v:0, t:'Schmal'}, {v:1, t:'Mittel'}, {v:2, t:'Breit'}], S.margin, v => setSetting('margin', v));
   chips($('optPages'), [{v:'auto', t:'Auto'}, {v:'1', t:'Eine'}, {v:'2', t:'Zwei'}], S.pages, v => setSetting('pages', v));
+  $('optTone').value = String(S.tone | 0);
   $('optRate').value = S.rate; $('rateVal').textContent = S.rate.toFixed(2).replace('.', ',') + '×';
   chips($('optSleep'), [{v:0, t:'Aus'}, {v:15, t:'15 Min.'}, {v:30, t:'30 Min.'}, {v:60, t:'60 Min.'}], S.sleep, v => { S.sleep = v; saveSettings(); setSleepTimer(); buildSettings(); });
   buildVoiceList();
@@ -1725,6 +1729,7 @@ $('optHyph').addEventListener('change', e => setSetting('hyph', e.target.checked
 $('optProg').addEventListener('change', e => setSetting('prog', e.target.checked));
 $('optPind').addEventListener('change', e => setSetting('pind', e.target.checked));
 $('optNoEmpty').addEventListener('change', e => setSetting('noempty', e.target.checked));
+$('optTone').addEventListener('change', e => { S.tone = +e.target.value; saveSettings(); if (!tts.on && PIPER_OK && usePiper()) { unlockAudio(); piperPreview(); } });
 $('optRate').addEventListener('input', e => { S.rate = +e.target.value; $('rateVal').textContent = S.rate.toFixed(2).replace('.', ',') + '×'; saveSettings(); updateRateLabel(); if (typeof setSpkRate === 'function') setSpkRate(); });
 /* ========== Vorlesen ========== */
 const tts = {on:false, paused:false, session:0, list:[], next:0, curIdx:-1, chunksOf:new Map(), loading:false, ended:false, sleepT:0, q:[], playing:false};
@@ -1804,7 +1809,7 @@ async function piperDownload(id) {
 }
 async function piperPreview() {
   try {
-    const r = await PiperTTS.speak(piperId(), 'Der Mond stand hoch über dem Haus.');
+    const r = await PiperTTS.speak(piperId(), 'Der Mond stand hoch über dem Haus.', S.tone | 0);
     if (!r) return;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = r.url; spk.src = r.url; setSpkRate();
@@ -1867,7 +1872,7 @@ function pumpPiper(session) {
     const c = last === idx ? first : Object.assign({}, first, {end: tts.list[last].end, text: txt, from: undefined});
     if (last !== idx) delete c.from;
     const en = {idx, last, c, seq:++spkSeq, res:null, prepared:false, dead:false, ready:null};
-    en.ready = PiperTTS.speak(id, txt).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
+    en.ready = PiperTTS.speak(id, txt, S.tone | 0).then(r => r || {empty:true}).catch(err => ({error:err})).then(r => {
       en.res = r;
       if (r && r.ms && r.seconds && !en.dead) { tts.sy = (tts.sy || []).concat(r.ms / 1000 / r.seconds); if (tts.sy.length === 4) { const a = tts.sy.reduce((x, y) => x + y, 0) / 4; toast('Rechenzeit ' + Math.round(a * 100) + ' % der Sprechzeit, ' + (r.threads || 1) + (r.threads > 1 ? ' Kerne' : ' Kern') + (a > 0.85 ? ' – zu langsam, bitte „Thorsten (natürlich)“ wählen' : ''), 7000); } }
       if (en.dead) { dropEntry(en); return r; }

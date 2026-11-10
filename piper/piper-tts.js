@@ -114,9 +114,9 @@
   function warm(id) { return call({type: 'warm', voice: id}); }
   /* Gibt {url, seconds} zurück (oder {empty:true}). Aufrufe laufen im Worker nacheinander. */
   var lastDone = 0;
-  function speak(id, text) {
+  function speak(id, text, tone) {
     var t0 = Date.now();
-    return call({type: 'speak', voice: id, text: text}).then(function (r) {
+    return call({type: 'speak', voice: id, text: text, tone: tone | 0}).then(function (r) {
       var now = Date.now(), ms = now - Math.max(t0, lastDone); lastDone = now;
       if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds, ms: ms, threads: r.threads};
       return null;

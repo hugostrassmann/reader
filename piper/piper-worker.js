@@ -132,6 +132,23 @@ async function infer(m, ids) {
   var res = await m.session.run(feeds);
   return res.output.data;
 }
+/* Höhen anheben (High-Shelf-Filter, RBJ): macht dumpfe Stimmen klarer. */
+function brighten(pcm, sr, db) {
+  if (!db) return pcm;
+  var A = Math.pow(10, db / 40), w0 = 2 * Math.PI * 3200 / sr, cs = Math.cos(w0), sn = Math.sin(w0), S = 0.8;
+  var al = sn / 2 * Math.sqrt((A + 1 / A) * (1 / S - 1) + 2), sq = 2 * Math.sqrt(A) * al;
+  var b0 = A * ((A + 1) + (A - 1) * cs + sq), b1 = -2 * A * ((A - 1) + (A + 1) * cs), b2 = A * ((A + 1) + (A - 1) * cs - sq);
+  var a0 = (A + 1) - (A - 1) * cs + sq, a1 = 2 * ((A - 1) - (A + 1) * cs), a2 = (A + 1) - (A - 1) * cs - sq;
+  b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0;
+  var out = new Float32Array(pcm.length), x1 = 0, x2 = 0, y1 = 0, y2 = 0, peak = 0, i;
+  for (i = 0; i < pcm.length; i++) {
+    var x = pcm[i], y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y; out[i] = y;
+    var ay = y < 0 ? -y : y; if (ay > peak) peak = ay;
+  }
+  if (peak > 0.97) { var g = 0.97 / peak; for (i = 0; i < out.length; i++) out[i] *= g; }
+  return out;
+}
 /* Schneidet Stille am Anfang und Ende ab, damit der Satzwechsel nahtlos klingt. */
 function trim(pcm, sr) {
   var peak = 0, i;
@@ -159,7 +176,7 @@ function wav(pcm, sr) {
   }
   return new Blob([buf], {type: 'audio/wav'});
 }
-async function run(id, text) {
+async function run(id, text, tone) {
   var m = await load(id), t0 = Date.now();
   var sentences = await phonemize(text, (m.conf.espeak && m.conf.espeak.voice) || 'de');
   if (!sentences.length) return null;
@@ -168,7 +185,7 @@ async function run(id, text) {
   for (var i = 0; i < sentences.length; i++) {
     var ids = toIds(sentences[i], m.conf.phoneme_id_map || {});
     if (ids.length < 4) continue;
-    var pcm = trim(await infer(m, ids), sr);
+    var pcm = trim(brighten(await infer(m, ids), sr, [0, 4, 8][tone | 0] || 0), sr);
     if (parts.length) { parts.push(gap); total += gap.length; }
     parts.push(pcm); total += pcm.length;
   }
@@ -184,7 +201,7 @@ self.onmessage = function (e) {
   if (d.type === 'drop') { delete loaded[d.voice]; return; }
   var work = chain.then(function () {
     if (d.type === 'warm') return load(d.voice).then(function () { return {}; });
-    if (d.type === 'speak') return run(d.voice, d.text).then(function (r) { return r || {empty: true}; });
+    if (d.type === 'speak') return run(d.voice, d.text, d.tone).then(function (r) { return r || {empty: true}; });
     throw new Error('Unbekannte Anfrage');
   });
   chain = work.catch(function () {});
