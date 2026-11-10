@@ -178,21 +178,26 @@ function wav(pcm, sr) {
 }
 async function run(id, text, tone) {
   var m = await load(id), t0 = Date.now();
-  var sentences = await phonemize(text, (m.conf.espeak && m.conf.espeak.voice) || 'de');
-  if (!sentences.length) return null;
-  var sr = m.conf.audio.sample_rate, parts = [], total = 0;
+  var texts = Array.isArray(text) ? text : [text];
+  var sr = m.conf.audio.sample_rate, parts = [], total = 0, starts = [];
   var gap = new Float32Array(Math.round(sr * GAP_SECONDS));
-  for (var i = 0; i < sentences.length; i++) {
-    var ids = toIds(sentences[i], m.conf.phoneme_id_map || {});
-    if (ids.length < 4) continue;
-    var pcm = trim(brighten(await infer(m, ids), sr, [0, 4, 8][tone | 0] || 0), sr);
-    if (parts.length) { parts.push(gap); total += gap.length; }
-    parts.push(pcm); total += pcm.length;
+  for (var ti = 0; ti < texts.length; ti++) {
+    var sentences = await phonemize(texts[ti], (m.conf.espeak && m.conf.espeak.voice) || 'de');
+    var first = true;
+    for (var i = 0; i < sentences.length; i++) {
+      var ids = toIds(sentences[i], m.conf.phoneme_id_map || {});
+      if (ids.length < 4) continue;
+      var pcm = trim(brighten(await infer(m, ids), sr, [0, 4, 8][tone | 0] || 0), sr);
+      if (parts.length) { parts.push(gap); total += gap.length; }
+      if (first) { starts[ti] = total / sr; first = false; }
+      parts.push(pcm); total += pcm.length;
+    }
+    if (starts[ti] == null) starts[ti] = total / sr;
   }
   if (!total) return null;
   var all = new Float32Array(total), o = 0;
   for (var j = 0; j < parts.length; j++) { all.set(parts[j], o); o += parts[j].length; }
-  return {blob: wav(all, sr), seconds: total / sr, ms: Date.now() - t0, threads: self.__threads || 1};
+  return {blob: wav(all, sr), seconds: total / sr, ms: Date.now() - t0, threads: self.__threads || 1, starts: starts};
 }
 
 var chain = Promise.resolve();

@@ -118,7 +118,7 @@
     var t0 = Date.now();
     return call({type: 'speak', voice: id, text: text, tone: tone | 0}).then(function (r) {
       var now = Date.now(), ms = now - Math.max(t0, lastDone); lastDone = now;
-      if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds, ms: ms, threads: r.threads};
+      if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds, ms: ms, threads: r.threads, starts: r.starts};
       return null;
     });
   }
