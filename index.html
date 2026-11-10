@@ -306,7 +306,7 @@ body.scrollmode #prevCh:not([hidden]){display:block;margin:0 auto 18px}
 <div id="lib" class="view">
   <div class="lib-in">
     <div class="lib-head">
-      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.3</span></h1>
+      <h1>Bibliothek <span id="appVer" style="font:600 13px system-ui,sans-serif;color:var(--muted);vertical-align:middle;margin-left:6px">v1.5.4</span></h1>
       <div class="row">
         <button class="sync-pill" id="syncPill" type="button" title="Tippen, um jetzt abzugleichen">Nur auf diesem Gerät</button>
         <button class="btn" id="libHl" hidden>Markierungen</button>
@@ -1551,6 +1551,23 @@ window.addEventListener('keydown', e => {
 let rsT = 0;
 window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (!$('reader').hidden) relayout(); }, 180); });
 window.addEventListener('orientationchange', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (!$('reader').hidden) relayout(); }, 350); });
+/* iOS rechnet nach dem Drehen die Berührungsflächen manchmal mit alten Massen: Seite zurücksetzen und Neuberechnung erzwingen */
+let fixT1 = 0, fixT2 = 0;
+function fixAfterTurn() {
+  try { if (!document.body.classList.contains('scrollmode')) window.scrollTo(0, 0); } catch (e) {}
+  const app = document.body, old = app.style.transform;
+  app.style.transform = 'translateZ(0)'; void app.offsetHeight; app.style.transform = old;
+  const tb = $('topbar'); tb.style.display = 'none'; void tb.offsetHeight; tb.style.display = '';
+  const st = $('stage'); st.style.pointerEvents = 'none'; void st.offsetHeight; st.style.pointerEvents = '';
+}
+function onTurn() {
+  if (typeof setTop === 'function') setTop(false);
+  clearTimeout(fixT1); clearTimeout(fixT2);
+  fixT1 = setTimeout(fixAfterTurn, 300);
+  fixT2 = setTimeout(() => { fixAfterTurn(); if (!$('reader').hidden) relayout(); }, 800);
+}
+window.addEventListener('orientationchange', onTurn);
+try { const mq = window.matchMedia('(orientation: portrait)'); (mq.addEventListener ? mq.addEventListener('change', onTurn) : mq.addListener(onTurn)); } catch (e) {}
 
 /* ========== Sheets: Inhalt, Lesezeichen, Einstellungen ========== */
 function closeSheets() { fdToken++; $('scrim').classList.remove('show'); $('gscrim').classList.remove('show'); $('toc').classList.remove('show'); $('searchSheet').classList.remove('show'); $('findSheet').classList.remove('show'); $('hlPop').classList.remove('show'); $('hlAll').classList.remove('show'); $('bookSheet').classList.remove('show'); $('settings').classList.remove('show'); }
