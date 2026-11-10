@@ -69,6 +69,7 @@
   }
 
   /* ---------- Worker ---------- */
+  function mtOff() { try { return localStorage.getItem('rd-mt-off') === '1'; } catch (e) { return false; } }
   var worker = null, nextId = 1, pending = {};
   function failAll(err) {
     var p = pending; pending = {};
@@ -76,7 +77,7 @@
   }
   function getWorker() {
     if (worker) return worker;
-    worker = new Worker(DIR + 'piper-worker.js');
+    worker = new Worker(DIR + 'piper-worker.js' + (mtOff() ? '?mt=0' : '?mt=1'));
     worker.onmessage = function (e) {
       var d = e.data, p = pending[d.id];
       if (!p) return;
@@ -92,6 +93,17 @@
     return worker;
   }
   function call(msg) {
+    return call1(msg).catch(function (err) { // Mehrkern-Start gescheitert: einmal mit einem Kern neu versuchen
+      if (!mtOff() && /Kerne\)/.test(String(err && err.message))) {
+        try { localStorage.setItem('rd-mt-off', '1'); } catch (e) {}
+        try { if (worker) worker.terminate(); } catch (e) {}
+        worker = null; failAll(new Error('Neustart'));
+        return call1(msg);
+      }
+      throw err;
+    });
+  }
+  function call1(msg) {
     return new Promise(function (resolve, reject) {
       var id = nextId++;
       pending[id] = {resolve: resolve, reject: reject};
@@ -106,7 +118,7 @@
     var t0 = Date.now();
     return call({type: 'speak', voice: id, text: text}).then(function (r) {
       var now = Date.now(), ms = now - Math.max(t0, lastDone); lastDone = now;
-      if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds, ms: ms};
+      if (r && r.blob) return {url: URL.createObjectURL(r.blob), seconds: r.seconds, ms: ms, threads: r.threads};
       return null;
     });
   }

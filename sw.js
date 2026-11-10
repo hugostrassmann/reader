@@ -1,11 +1,20 @@
 /* Service Worker: App komplett offline verfügbar. Bei Änderungen die Versionsnummer erhöhen. */
-const VERSION = 'epub-reader-pwa-1.5.6';
+const VERSION = 'epub-reader-pwa-1.6.0';
 const RUNTIME = 'epub-reader-runtime-v1'; // grosse Sprachdateien, bleiben bei Updates erhalten
 const FILES = [
   './', './index.html', './jszip.min.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',
   './piper/piper-tts.js', './piper/piper-worker.js'
 ];
+/* Mehrere Rechenkerne für die Stimme brauchen „cross-origin isolation“: diese Kopfzeilen setzt der Service Worker selbst. */
+function iso(res) {
+  if (!res || res.status === 0 || res.type === 'opaque' || res.type === 'opaqueredirect') return res;
+  const h = new Headers(res.headers);
+  h.set('Cross-Origin-Opener-Policy', 'same-origin');
+  h.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  h.set('Cross-Origin-Resource-Policy', 'same-origin');
+  return new Response(res.body, {status: res.status, statusText: res.statusText, headers: h});
+}
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => Promise.all(FILES.map(f => fetch(f, {cache: 'reload'}).then(r => { if (!r.ok) throw new Error(f); return c.put(f, r); })))).then(() => self.skipWaiting()));
 });
@@ -28,21 +37,21 @@ self.addEventListener('fetch', e => {
       fetch(req).then(res => {
         const copy = res.clone();
         caches.open(VERSION).then(c => c.put('./index.html', copy)).catch(() => {});
-        return res;
-      }).catch(() => caches.match('./index.html'))
+        return iso(res);
+      }).catch(() => caches.match('./index.html').then(iso))
     );
     return;
   }
   const big = /\/piper\/.+\.(wasm|data|js)$/.test(url.pathname) && !/piper-tts\.js$/.test(url.pathname);
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then(hit => {
-      if (hit) return hit;
+      if (hit) return iso(hit);
       return fetch(req).then(res => {
         if (big && res.ok && res.status === 200) {
           const copy = res.clone();
           caches.open(RUNTIME).then(c => c.put(req, copy)).catch(() => {});
         }
-        return res;
+        return iso(res);
       }).catch(() => Response.error());
     })
   );

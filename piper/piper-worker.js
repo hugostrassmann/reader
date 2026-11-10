@@ -12,7 +12,9 @@ function ortLoad() {
     importScripts(DIR + 'ort.wasm.min.js');
     var ort = self.ort;
     ort.env.wasm.wasmPaths = DIR;
-    ort.env.wasm.numThreads = 1;
+    var mt = self.crossOriginIsolated && typeof SharedArrayBuffer !== 'undefined' && !/mt=0/.test(self.location.search);
+    ort.env.wasm.numThreads = mt ? Math.max(2, Math.min(4, (self.navigator && navigator.hardwareConcurrency) || 2)) : 1;
+    self.__threads = ort.env.wasm.numThreads;
     ort.env.wasm.proxy = false;
     return ort;
   });
@@ -98,7 +100,8 @@ function load(id) {
     var ort = await stage('Rechenprogramm laden', ortLoad());
     var buf = await stage('Modell lesen', ro.arrayBuffer());
     await stage('Sprachdaten laden', phonLoad());
-    var session = await stage('Modell starten (' + Math.round(buf.byteLength / 1048576) + ' MB)', ort.InferenceSession.create(new Uint8Array(buf), {executionProviders: ['wasm'], graphOptimizationLevel: 'all'}));
+    var opts = {executionProviders: ['wasm'], graphOptimizationLevel: 'all'}, session;
+    session = await stage('Modell starten (' + Math.round(buf.byteLength / 1048576) + ' MB, ' + ort.env.wasm.numThreads + ' Kerne)', ort.InferenceSession.create(new Uint8Array(buf), opts));
     return {ort: ort, session: session, conf: conf};
   })();
   loaded[id].catch(function () { delete loaded[id]; });
@@ -172,7 +175,7 @@ async function run(id, text) {
   if (!total) return null;
   var all = new Float32Array(total), o = 0;
   for (var j = 0; j < parts.length; j++) { all.set(parts[j], o); o += parts[j].length; }
-  return {blob: wav(all, sr), seconds: total / sr, ms: Date.now() - t0};
+  return {blob: wav(all, sr), seconds: total / sr, ms: Date.now() - t0, threads: self.__threads || 1};
 }
 
 var chain = Promise.resolve();
