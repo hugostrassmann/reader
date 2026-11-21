@@ -2516,25 +2516,9 @@ async function chapterText(i) {
   if (!book.textIdx) book.textIdx = [];
   if (book.textIdx[i] != null) return book.textIdx[i];
   const ch = chCache.get(i) || txtCache.get(i) || await buildChapter(book, i, false);
-  // Suchtext: zwischen Blöcken ein Leerzeichen, weiche Trennstriche/Zero-Width-Zeichen weglassen.
-  // map[k] = Originalposition (Offset im Kapitel) des Zeichens k im Suchtext, -1 = eingefügt.
-  let t = '';
-  const map = [];
-  let prevBlk = null;
-  for (let k = 0; k < ch.nodes.length; k++) {
-    const blk = blockOf(ch.nodes[k], ch.root);
-    if (k && blk !== prevBlk) { t += ' '; map.push(-1); }
-    prevBlk = blk;
-    const v = ch.nodes[k].nodeValue, base = ch.starts[k];
-    for (let j = 0; j < v.length; j++) {
-      const c = v.charCodeAt(j);
-      if (c === 0xad || c === 0x200b || c === 0x200c || c === 0x200d || c === 0x2060 || c === 0xfeff) continue;
-      t += v[j]; map.push(base + j);
-    }
-  }
-  const r = {t, map};
-  book.textIdx[i] = r;
-  return r;
+  const t = ch.nodes.map(n => n.nodeValue).join('');
+  book.textIdx[i] = t;
+  return t;
 }
 function appendRows() {
   const ul = $('srList');
@@ -2563,16 +2547,14 @@ async function runSearch(q) {
   for (let i = 0; i < book.spine.length; i++) {
     if (tk !== SR.token || !book) return;
     $('srStatus').textContent = 'Suche … Abschnitt ' + (i + 1) + ' von ' + book.spine.length + ' · ' + SR.results.length + ' Treffer';
-    let t, map;
-    try { ({t, map} = await chapterText(i)); } catch (e) { continue; }
+    let t;
+    try { t = await chapterText(i); } catch (e) { continue; }
     rx.lastIndex = 0;
     let m;
     while ((m = rx.exec(t)) !== null) {
       if (m[0].length === 0) { rx.lastIndex++; continue; }
       const idx = m.index, len = m[0].length;
-      let e0 = idx + len - 1; while (e0 > idx && map[e0] < 0) e0--;
-      let s0 = idx; while (s0 < e0 && map[s0] < 0) s0++;
-      SR.results.push({ch:i, off:map[s0], len:map[e0] - map[s0] + 1,
+      SR.results.push({ch:i, off:idx, len,
         a:(idx > 32 ? '…' : '') + t.slice(Math.max(0, idx - 32), idx).replace(/\s+/g, ' '),
         hit:t.slice(idx, idx + len).replace(/\s+/g, ' '),
         z:t.slice(idx + len, idx + len + 56).replace(/\s+/g, ' ')});
